@@ -435,6 +435,7 @@ def create_music_video(
     resolution_name="landscape",
     transition_duration=DEFAULT_TRANSITION_DURATION,
     effect_style="random",
+    enable_beat_sync=True,
     song_title=None,
     custom_font_path=None,
     font_color=None,
