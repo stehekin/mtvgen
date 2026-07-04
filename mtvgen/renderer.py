@@ -469,7 +469,10 @@ def create_music_video(
     
     if preview_duration is not None and preview_duration > 0:
         total_duration = min(total_duration, float(preview_duration))
-        audio_clip = audio_clip.subclip(0, total_duration)
+        if hasattr(audio_clip, "subclipped"):
+            audio_clip = audio_clip.subclipped(0, total_duration)
+        else:
+            audio_clip = audio_clip.subclip(0, total_duration)
         print(f"PREVIEW MODE: Capping video duration to first {total_duration:.2f} seconds.")
     else:
         print(f"Song duration: {total_duration:.2f} seconds")
