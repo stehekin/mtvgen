@@ -73,6 +73,9 @@ python3 main.py -i <images_input> -l <lyrics_file> -s <audio_file> [options]
 - `--effect`: Slide transition style (choices: `fade`, `focus-reveal`, `grayscale-reveal`, `flash-white`, `random`; default: `random`).
 - `--title`: Song title to display at the beginning of the video (defaults to extracting from audio filename).
 - `--font`: Path to a custom TrueType/OpenType font file (e.g. `.ttf` or `.otf`) to use for video text rendering.
+- `--font-color`: Text color (supports standard names like `white`, `yellow`, `red`, hex codes like `#FFCC00`, or comma-separated RGB integers like `255,204,0`; default: `white`).
+- `--box-color`: Bounding box background color (supports RGBA comma-separated values like `0,0,0,100` or hex like `#00000064`; default: semi-transparent black `0,0,0,100`).
+- `--shadow-color`: Text drop shadow color (supports RGBA comma-separated values like `0,0,0,150` or hex like `#00000096`; default: dark shadow `0,0,0,150`).
 - `--preview [DURATION]`: Generate a short preview video of the specified length in seconds. Defaults to `10.0` seconds if `--preview` is specified without a value (e.g., `--preview 15.5` to compile a 15.5-second preview).
 - `--transition`: Overlap transition duration in seconds (default: `1.0`).
 - `--fps`: Frame rate of output video (default: `15`). Pass `--fps 12` to compile even faster.

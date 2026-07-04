@@ -9,6 +9,73 @@ except ImportError:
 
 VALID_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff")
 
+def parse_color(color_str, default_alpha=None):
+    """
+    Parses a color string into an RGB or RGBA tuple.
+    Supports hex strings ('#FFFFFF', '#00000064'), comma-separated numbers ('255,255,255'),
+    and standard color names ('white', 'black', 'red', 'green', 'blue', etc.).
+    """
+    color_str = color_str.strip().lower()
+    
+    # Standard color map
+    color_names = {
+        "white": (255, 255, 255),
+        "black": (0, 0, 0),
+        "red": (255, 0, 0),
+        "green": (0, 255, 0),
+        "blue": (0, 0, 255),
+        "yellow": (255, 255, 0),
+        "cyan": (0, 255, 255),
+        "magenta": (255, 0, 255),
+        "gray": (128, 128, 128),
+        "grey": (128, 128, 128),
+        "orange": (255, 165, 0),
+        "purple": (128, 0, 128)
+    }
+    
+    if color_str in color_names:
+        rgb = color_names[color_str]
+        if default_alpha is not None:
+            return (*rgb, default_alpha)
+        return rgb
+
+    # Hex color
+    if color_str.startswith("#"):
+        hex_val = color_str.lstrip("#")
+        if len(hex_val) == 6:
+            r = int(hex_val[0:2], 16)
+            g = int(hex_val[2:4], 16)
+            b = int(hex_val[4:6], 16)
+            if default_alpha is not None:
+                return (r, g, b, default_alpha)
+            return (r, g, b)
+        elif len(hex_val) == 8:
+            r = int(hex_val[0:2], 16)
+            g = int(hex_val[2:4], 16)
+            b = int(hex_val[4:6], 16)
+            a = int(hex_val[6:8], 16)
+            return (r, g, b, a)
+        else:
+            raise ValueError(f"Invalid hex color format: {color_str}")
+
+    # Comma-separated
+    if "," in color_str:
+        try:
+            parts = [int(p.strip()) for p in color_str.split(",")]
+            if len(parts) == 3:
+                if default_alpha is not None:
+                    return (*parts, default_alpha)
+                return tuple(parts)
+            elif len(parts) == 4:
+                return tuple(parts)
+            else:
+                raise ValueError
+        except Exception:
+            raise ValueError(f"Invalid RGB/RGBA color format: {color_str}")
+            
+    raise ValueError(f"Unknown color format: {color_str}")
+
+
 def find_images(image_input):
     """
     Given a path (directory or list of files), finds and returns all valid image paths.
@@ -99,6 +166,22 @@ def main():
         "--font",
         help="Path to a custom TTF/OTF font file to use for text rendering."
     )
+    parser.add_argument(
+        "--font-color",
+        default="white",
+        help="Text color (hex e.g. '#FFFFFF', RGB e.g. '255,255,255', or name 'white')."
+    )
+    parser.add_argument(
+        "--box-color",
+        default="0,0,0,100",
+        help="Lyric background box color (RGBA e.g. '0,0,0,100' or hex e.g. '#00000064')."
+    )
+    parser.add_argument(
+        "--shadow-color",
+        default="0,0,0,150",
+        help="Text drop shadow color (RGBA e.g. '0,0,0,150' or hex e.g. '#00000096')."
+    )
+
 
 
     parser.add_argument(
@@ -208,6 +291,16 @@ def main():
         name_without_ext, _ = os.path.splitext(base_name)
         song_title = name_without_ext.replace("_", " ").replace("-", " ").title()
 
+    # Parse color overrides
+    try:
+        font_color = parse_color(args.font_color)
+        box_color = parse_color(args.box_color, default_alpha=100)
+        shadow_color = parse_color(args.shadow_color, default_alpha=150)
+    except ValueError as e:
+        print(f"Error parsing colors: {e}")
+        return 1
+
+
     # 5. Run Video Generator
     print("\nStarting video generation process...")
     try:
@@ -222,6 +315,9 @@ def main():
             enable_beat_sync=not args.no_beat_sync,
             song_title=song_title,
             custom_font_path=args.font,
+            font_color=font_color,
+            box_color=box_color,
+            shadow_color=shadow_color,
             preview_duration=args.preview,
             fps=args.fps
         )

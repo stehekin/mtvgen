@@ -221,17 +221,20 @@ def get_font(font_size, is_cjk=False):
     return ImageFont.load_default()
 
 
-def get_text_size_with_fallback(text, font_western, font_cjk):
+def get_text_metrics_with_fallback(text, font_western, font_cjk):
     """
-    Calculates the size of a string using character-by-character fallback.
-    Uses typographical metrics (getlength and getmetrics) for perfect baseline stability.
+    Measures the text line and returns (total_width, visual_height, global_offset_y).
+    This ensures pixel-perfect vertical centering by measuring the combined bounding box
+    of all characters in the string across the two fallback fonts.
     """
     if not text:
-        return 0, 0
+        return 0, 0, 0
+        
     total_w = 0
-    max_height = 0
+    global_min_y = 9999
+    global_max_y = -9999
     
-    # Temporary draw context for textsize fallback
+    # Temporary draw context
     draw_temp = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
     
     for char in text:
@@ -242,46 +245,43 @@ def get_text_size_with_fallback(text, font_western, font_cjk):
                        '\uff00' <= char <= '\uffef')
         font = font_cjk if is_char_cjk else font_western
         
-        # Get character typographical width
+        # Width advance
         if hasattr(font, 'getlength'):
             char_w = int(font.getlength(char))
         else:
-            # Fallback for older Pillow versions
             char_w = font.getsize(char)[0]
-            
         total_w += char_w
         
-        # Get font height metrics
-        if hasattr(font, 'getmetrics'):
-            ascent, descent = font.getmetrics()
-            h = ascent + descent
+        # Bounding box vertical bounds
+        if hasattr(font, 'getbbox'):
+            bbox = font.getbbox(char)
         else:
-            h = font.getsize(char)[1]
+            w, h = draw_temp.textsize(char, font=font)
+            bbox = (0, 0, w, h)
             
-        if h > max_height:
-            max_height = h
-            
-    return total_w, max_height
+        if bbox:
+            min_y = bbox[1]
+            max_y = bbox[3]
+            if min_y < global_min_y:
+                global_min_y = min_y
+            if max_y > global_max_y:
+                global_max_y = max_y
+                
+    if global_min_y == 9999:
+        global_min_y = 0
+    if global_max_y == -9999:
+        global_max_y = 48  # Default estimate
+        
+    visual_height = global_max_y - global_min_y
+    return total_w, visual_height, global_min_y
 
-def draw_text_with_fallback(draw, text, x, y, font_western, font_cjk, fill, stroke_width=0, stroke_fill=None):
+def draw_text_with_fallback(draw, text, x, y, font_western, font_cjk, fill, global_offset_y, stroke_width=0, stroke_fill=None):
     """
     Renders text character-by-character, dynamically choosing between a Western font
     and a CJK font. Keeps characters perfectly aligned on the typographical baseline.
     Spaces are bypassed and only cursor-advanced to prevent Pillow space outline bugs.
     """
     curr_x = x
-    
-    # We compensate for the font's baseline offset globally to ensure all characters
-    # in the line share the same vertical alignment.
-    test_char = "国" if any(('\u4e00' <= c <= '\u9fff') for c in text) else "M"
-    test_font = font_cjk if test_char == "国" else font_western
-    
-    global_offset_y = 0
-    if hasattr(test_font, 'getbbox'):
-        test_bbox = test_font.getbbox(test_char)
-        if test_bbox:
-            global_offset_y = test_bbox[1]
-            
     for char in text:
         is_char_cjk = ('\u4e00' <= char <= '\u9fff' or 
                        '\u3040' <= char <= '\u30ff' or 
@@ -318,7 +318,7 @@ def render_lyric_frame(width, height, active_text, font_western, font_cjk, start
     card by shifting early lyrics to the bottom. Uses pixel-exact offset compensation
     and font fallback to align and render the text perfectly.
     """
-    active_w, active_h = get_text_size_with_fallback(active_text, font_western, font_cjk)
+    active_w, active_h, global_offset_y = get_text_metrics_with_fallback(active_text, font_western, font_cjk)
     
     box_w = active_w + (LYRIC_BOX_PADDING[0] * 2)
     box_h = active_h + (LYRIC_BOX_PADDING[1] * 2)
@@ -354,7 +354,8 @@ def render_lyric_frame(width, height, active_text, font_western, font_cjk, start
             draw, active_text, 
             active_x + LYRIC_SHADOW_OFFSET[0], active_y + LYRIC_SHADOW_OFFSET[1], 
             font_western, font_cjk, 
-            LYRIC_SHADOW_COLOR
+            LYRIC_SHADOW_COLOR,
+            global_offset_y
         )
         # Draw Main text with outline
         draw_text_with_fallback(
@@ -362,6 +363,7 @@ def render_lyric_frame(width, height, active_text, font_western, font_cjk, start
             active_x, active_y, 
             font_western, font_cjk, 
             LYRIC_FONT_COLOR,
+            global_offset_y,
             stroke_width=LYRIC_OUTLINE_WIDTH,
             stroke_fill=LYRIC_OUTLINE_COLOR
         )
@@ -386,7 +388,7 @@ def render_title_frame(width, height, title_text, font_title_w, font_title_c):
     draw = ImageDraw.Draw(frame)
 
     # Calculate title size
-    title_w, title_h = get_text_size_with_fallback(title_text, font_title_w, font_title_c)
+    title_w, title_h, title_offset_y = get_text_metrics_with_fallback(title_text, font_title_w, font_title_c)
     
     # Center title vertically
     title_x = (width - title_w) // 2
@@ -398,13 +400,15 @@ def render_title_frame(width, height, title_text, font_title_w, font_title_c):
         draw, title_text, 
         title_x + 4, title_y + 4, 
         font_title_w, font_title_c, 
-        LYRIC_SHADOW_COLOR
+        LYRIC_SHADOW_COLOR,
+        title_offset_y
     )
     draw_text_with_fallback(
         draw, title_text, 
         title_x, title_y, 
         font_title_w, font_title_c, 
         LYRIC_FONT_COLOR,
+        title_offset_y,
         stroke_width=LYRIC_OUTLINE_WIDTH,
         stroke_fill=LYRIC_OUTLINE_COLOR
     )
@@ -433,6 +437,9 @@ def create_music_video(
     effect_style="random",
     song_title=None,
     custom_font_path=None,
+    font_color=None,
+    box_color=None,
+    shadow_color=None,
     preview_duration=None,
     fps=DEFAULT_FPS
 ):
@@ -444,6 +451,15 @@ def create_music_video(
         raise ValueError("Must provide at least one image path.")
     if not os.path.exists(mp3_path):
         raise FileNotFoundError(f"MP3 file not found: {mp3_path}")
+
+    # Override visual style from parameters if provided
+    global LYRIC_FONT_COLOR, LYRIC_BOX_COLOR, LYRIC_SHADOW_COLOR
+    if font_color is not None:
+        LYRIC_FONT_COLOR = font_color
+    if box_color is not None:
+        LYRIC_BOX_COLOR = box_color
+    if shadow_color is not None:
+        LYRIC_SHADOW_COLOR = shadow_color
 
     # 1. Load Audio and determine video duration
     print("Loading audio track...")
