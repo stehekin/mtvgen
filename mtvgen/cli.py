@@ -181,6 +181,12 @@ def main():
         default="0,0,0,150",
         help="Text drop shadow color (RGBA e.g. '0,0,0,150' or hex e.g. '#00000096')."
     )
+    parser.add_argument(
+        "--lyric-pos",
+        choices=["dynamic", "top", "center", "bottom"],
+        default="dynamic",
+        help="Screen position of the lyrics: dynamic, top, center, or bottom (default: dynamic)."
+    )
 
 
 
@@ -318,6 +324,7 @@ def main():
             font_color=font_color,
             box_color=box_color,
             shadow_color=shadow_color,
+            lyric_pos=args.lyric_pos,
             preview_duration=args.preview,
             fps=args.fps
         )

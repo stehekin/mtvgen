@@ -311,12 +311,11 @@ def draw_text_with_fallback(draw, text, x, y, font_western, font_cjk, fill, glob
         )
         curr_x += char_w
 
-def render_lyric_frame(width, height, active_text, font_western, font_cjk, start_time):
+def render_lyric_frame(width, height, active_text, font_western, font_cjk, start_time, lyric_pos="dynamic"):
     """
     Renders the lyric box as a small transparent PIL image (only the current sentence),
-    and calculates its position on the main screen. Avoids overlapping with the intro title
-    card by shifting early lyrics to the bottom. Uses pixel-exact offset compensation
-    and font fallback to align and render the text perfectly.
+    and calculates its position on the main screen based on lyric_pos.
+    Uses pixel-exact offset compensation and font fallback to align and render the text perfectly.
     """
     active_w, active_h, global_offset_y = get_text_metrics_with_fallback(active_text, font_western, font_cjk)
     
@@ -371,12 +370,20 @@ def render_lyric_frame(width, height, active_text, font_western, font_cjk, start
     # Position calculations: center horizontally
     x_pos = (width - box_w) // 2
     
-    # If the lyric falls during the intro title card (first 5.0 seconds), 
-    # position it at the bottom to avoid overlapping with the centered title card.
-    if start_time < 5.0:
-        y_pos = height - 100 - box_h  # Bottom third
-    else:
-        y_pos = (height - box_h) // 2 # Centered
+    # Calculate vertical position based on lyric_pos option
+    if lyric_pos == "top":
+        y_pos = 100
+    elif lyric_pos == "center":
+        y_pos = (height - box_h) // 2
+    elif lyric_pos == "bottom":
+        y_pos = height - 100 - box_h
+    else:  # "dynamic"
+        # If the lyric falls during the intro title card (first 5.0 seconds), 
+        # position it at the bottom to avoid overlapping with the centered title card.
+        if start_time < 5.0:
+            y_pos = height - 100 - box_h  # Bottom third
+        else:
+            y_pos = (height - box_h) // 2 # Centered
         
     return box_img, x_pos, y_pos
 
@@ -441,6 +448,7 @@ def create_music_video(
     font_color=None,
     box_color=None,
     shadow_color=None,
+    lyric_pos="dynamic",
     preview_duration=None,
     fps=DEFAULT_FPS
 ):
@@ -697,7 +705,7 @@ def create_music_video(
         if duration <= 0:
             continue
             
-        frame_pil, x_pos, y_pos = render_lyric_frame(target_w, target_h, text, font_w, font_c, start)
+        frame_pil, x_pos, y_pos = render_lyric_frame(target_w, target_h, text, font_w, font_c, start, lyric_pos)
         frame_np = np.array(frame_pil)
         
         # Create a small ImageClip positioned at calculated coordinates, saving 90% blending pixel computations
