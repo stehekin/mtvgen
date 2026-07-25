@@ -449,6 +449,8 @@ def create_music_video(
     box_color=None,
     shadow_color=None,
     lyric_pos="dynamic",
+    lyric_font_size=None,
+    title_font_size=None,
     preview_duration=None,
     fps=DEFAULT_FPS
 ):
@@ -462,13 +464,15 @@ def create_music_video(
         raise FileNotFoundError(f"MP3 file not found: {mp3_path}")
 
     # Override visual style from parameters if provided
-    global LYRIC_FONT_COLOR, LYRIC_BOX_COLOR, LYRIC_SHADOW_COLOR
+    global LYRIC_FONT_COLOR, LYRIC_BOX_COLOR, LYRIC_SHADOW_COLOR, LYRIC_FONT_SIZE
     if font_color is not None:
         LYRIC_FONT_COLOR = font_color
     if box_color is not None:
         LYRIC_BOX_COLOR = box_color
     if shadow_color is not None:
         LYRIC_SHADOW_COLOR = shadow_color
+    if lyric_font_size is not None:
+        LYRIC_FONT_SIZE = lyric_font_size
 
     # 1. Load Audio and determine video duration
     print("Loading audio track...")
@@ -678,12 +682,13 @@ def create_music_video(
     # Render song title card at the start of the video
     if song_title and total_duration > 5.0:
         print(f"Creating intro title card overlay: '{song_title}'")
+        t_size = title_font_size if title_font_size is not None else 110
         if custom_font_path:
-            font_title_w = ImageFont.truetype(custom_font_path, 110)
-            font_title_c = ImageFont.truetype(custom_font_path, 110)
+            font_title_w = ImageFont.truetype(custom_font_path, t_size)
+            font_title_c = ImageFont.truetype(custom_font_path, t_size)
         else:
-            font_title_w = get_font(110, is_cjk=False)
-            font_title_c = get_font(110, is_cjk=is_cjk)
+            font_title_w = get_font(t_size, is_cjk=False)
+            font_title_c = get_font(t_size, is_cjk=is_cjk)
         
         title_pil = render_title_frame(
             target_w, target_h, song_title, 

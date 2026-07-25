@@ -73,6 +73,8 @@ python3 main.py -i <images_input> -l <lyrics_file> -s <audio_file> [options]
 - `--effect`: Slide transition style (choices: `fade`, `focus-reveal`, `grayscale-reveal`, `flash-white`, `random`; default: `random`).
 - `--title`: Song title to display at the beginning of the video (defaults to extracting from audio filename).
 - `--font`: Path to a custom TrueType/OpenType font file (e.g. `.ttf` or `.otf`) to use for video text rendering.
+- `--font-size`: Font size for the lyric text overlay (default: `56`).
+- `--title-size`: Font size for the song title card (default: `110`).
 - `--font-color`: Text color (supports standard names like `white`, `yellow`, `red`, hex codes like `#FFCC00`, or comma-separated RGB integers like `255,204,0`; default: `white`).
 - `--box-color`: Bounding box background color (supports RGBA comma-separated values like `0,0,0,100` or hex like `#00000064`; default: semi-transparent black `0,0,0,100`).
 - `--shadow-color`: Text drop shadow color (supports RGBA comma-separated values like `0,0,0,150` or hex like `#00000096`; default: dark shadow `0,0,0,150`).

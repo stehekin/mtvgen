@@ -187,6 +187,18 @@ def main():
         default="dynamic",
         help="Screen position of the lyrics: dynamic, top, center, or bottom (default: dynamic)."
     )
+    parser.add_argument(
+        "--font-size",
+        type=int,
+        default=56,
+        help="Font size for the lyric text overlay (default: 56)."
+    )
+    parser.add_argument(
+        "--title-size",
+        type=int,
+        default=110,
+        help="Font size for the song title card (default: 110)."
+    )
 
 
 
@@ -325,6 +337,8 @@ def main():
             box_color=box_color,
             shadow_color=shadow_color,
             lyric_pos=args.lyric_pos,
+            lyric_font_size=args.font_size,
+            title_font_size=args.title_size,
             preview_duration=args.preview,
             fps=args.fps
         )
