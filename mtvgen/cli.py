@@ -199,6 +199,10 @@ def main():
         default=110,
         help="Font size for the song title card (default: 110)."
     )
+    parser.add_argument(
+        "--weights",
+        help="Comma-separated percentage weights for slide durations (e.g. '10,10,20')."
+    )
 
 
 
@@ -339,6 +343,7 @@ def main():
             lyric_pos=args.lyric_pos,
             lyric_font_size=args.font_size,
             title_font_size=args.title_size,
+            weights_str=args.weights,
             preview_duration=args.preview,
             fps=args.fps
         )

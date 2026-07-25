@@ -451,6 +451,7 @@ def create_music_video(
     lyric_pos="dynamic",
     lyric_font_size=None,
     title_font_size=None,
+    weights_str=None,
     preview_duration=None,
     fps=DEFAULT_FPS
 ):
@@ -496,57 +497,103 @@ def create_music_video(
     num_images = len(image_paths)
     image_timings = [] # List of tuples: (start_time, end_time)
     
-    if enable_beat_sync and num_images > 1:
+    # Process custom slide durations weights if provided
+    has_custom_weights = False
+    if weights_str:
+        print(f"Custom slide weights specified: {weights_str}. Disabling beat-sync.")
+        enable_beat_sync = False
         try:
-            print("Detecting beat onsets for transition synchronization...")
-            beat_times = detect_beats(mp3_path)
-            print(f"Detected {len(beat_times)} beats in audio.")
-            
-            # Only keep beats that fall within the video duration (important for --preview mode)
-            beat_times = [t for t in beat_times if t < total_duration]
-            print(f"Filtered to {len(beat_times)} beats within video duration ({total_duration:.2f}s).")
-            
-            if len(beat_times) < num_images:
-                print(f"Not enough beats ({len(beat_times)}) for {num_images} images within the video duration. Falling back to uniform spacing.")
-                enable_beat_sync = False
-            else:
-                # Snapping beat-sync algorithm: start with uniform division and snap to closest beat
-                ideal_duration = total_duration / num_images
-                max_deviation = ideal_duration * 0.35  # Allow snapping within 35% of slide duration
+            raw_weights = [float(x.strip()) for x in weights_str.split(",")]
+            if any(w < 0 for w in raw_weights):
+                raise ValueError("Weights cannot be negative.")
+            if len(raw_weights) > num_images:
+                raise ValueError(f"More weights specified ({len(raw_weights)}) than the number of images ({num_images}).")
                 
-                transition_timestamps = [0.0]
-                for i in range(1, num_images):
-                    target_t = i * ideal_duration
-                    if beat_times:
-                        closest_beat = min(beat_times, key=lambda b: abs(b - target_t))
-                        if abs(closest_beat - target_t) <= max_deviation:
-                            transition_timestamps.append(closest_beat)
+            sum_w = sum(raw_weights)
+            if sum_w > 100.0:
+                print(f"Warning: Sum of weights ({sum_w}%) exceeds 100%. Normalizing weights to fit 100%.")
+                raw_weights = [w / sum_w * 100.0 for w in raw_weights]
+                sum_w = 100.0
+                
+            if len(raw_weights) < num_images:
+                remaining_pct = 100.0 - sum_w
+                each_remaining = remaining_pct / (num_images - len(raw_weights))
+                final_pcts = raw_weights + [each_remaining] * (num_images - len(raw_weights))
+            else:
+                if abs(sum_w - 100.0) > 1e-5:
+                     print(f"Warning: Sum of weights ({sum_w}%) is not 100% for all images. Normalizing.")
+                     final_pcts = [w / sum_w * 100.0 for w in raw_weights]
+                else:
+                     final_pcts = raw_weights
+                     
+            current_time = 0.0
+            for i in range(num_images):
+                pct = final_pcts[i]
+                duration_i = total_duration * (pct / 100.0)
+                end_time = current_time + duration_i
+                if i == num_images - 1:
+                    end_time = total_duration
+                image_timings.append((current_time, end_time))
+                current_time = end_time
+                
+            print("Custom weighted slide transition timings generated.")
+            has_custom_weights = True
+        except Exception as e:
+            print(f"Failed to parse custom weights ({e}). Falling back to standard timing strategies.")
+            image_timings = []
+
+    if not has_custom_weights:
+        if enable_beat_sync and num_images > 1:
+            try:
+                print("Detecting beat onsets for transition synchronization...")
+                beat_times = detect_beats(mp3_path)
+                print(f"Detected {len(beat_times)} beats in audio.")
+                
+                # Only keep beats that fall within the video duration (important for --preview mode)
+                beat_times = [t for t in beat_times if t < total_duration]
+                print(f"Filtered to {len(beat_times)} beats within video duration ({total_duration:.2f}s).")
+                
+                if len(beat_times) < num_images:
+                    print(f"Not enough beats ({len(beat_times)}) for {num_images} images within the video duration. Falling back to uniform spacing.")
+                    enable_beat_sync = False
+                else:
+                    # Snapping beat-sync algorithm: start with uniform division and snap to closest beat
+                    ideal_duration = total_duration / num_images
+                    max_deviation = ideal_duration * 0.35  # Allow snapping within 35% of slide duration
+                    
+                    transition_timestamps = [0.0]
+                    for i in range(1, num_images):
+                        target_t = i * ideal_duration
+                        if beat_times:
+                            closest_beat = min(beat_times, key=lambda b: abs(b - target_t))
+                            if abs(closest_beat - target_t) <= max_deviation:
+                                transition_timestamps.append(closest_beat)
+                            else:
+                                transition_timestamps.append(target_t)
                         else:
                             transition_timestamps.append(target_t)
-                    else:
-                        transition_timestamps.append(target_t)
-                transition_timestamps.append(total_duration)
-                
-                for i in range(num_images):
-                    image_timings.append((transition_timestamps[i], transition_timestamps[i+1]))
+                    transition_timestamps.append(total_duration)
                     
-                print("Beat-synced slide transition timings generated.")
-        except Exception as e:
-            print(f"Beat detection failed ({e}). Falling back to uniform spacing.")
-            enable_beat_sync = False
-
-    if not enable_beat_sync or num_images <= 1:
-        # Uniform distribution
-        base_img_duration = total_duration / num_images
-        current_time = 0.0
-        for i in range(num_images):
-            end_time = current_time + base_img_duration
-            if i == num_images - 1:
-                end_time = total_duration
-            image_timings.append((current_time, end_time))
-            current_time = end_time
-            
-        print("Uniform slide transition timings generated.")
+                    for i in range(num_images):
+                        image_timings.append((transition_timestamps[i], transition_timestamps[i+1]))
+                        
+                    print("Beat-synced slide transition timings generated.")
+            except Exception as e:
+                print(f"Beat detection failed ({e}). Falling back to uniform spacing.")
+                enable_beat_sync = False
+    
+        if not enable_beat_sync or num_images <= 1:
+            # Uniform distribution
+            base_img_duration = total_duration / num_images
+            current_time = 0.0
+            for i in range(num_images):
+                end_time = current_time + base_img_duration
+                if i == num_images - 1:
+                    end_time = total_duration
+                image_timings.append((current_time, end_time))
+                current_time = end_time
+                
+            print("Uniform slide transition timings generated.")
 
     # 3. Build Background Slideshow
     print("Building background slideshow...")

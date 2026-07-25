@@ -79,6 +79,7 @@ python3 main.py -i <images_input> -l <lyrics_file> -s <audio_file> [options]
 - `--box-color`: Bounding box background color (supports RGBA comma-separated values like `0,0,0,100` or hex like `#00000064`; default: semi-transparent black `0,0,0,100`).
 - `--shadow-color`: Text drop shadow color (supports RGBA comma-separated values like `0,0,0,150` or hex like `#00000096`; default: dark shadow `0,0,0,150`).
 - `--lyric-pos`: Screen position of the lyrics (choices: `dynamic` (bottom in first 5s, center thereafter), `top`, `center`, `bottom`; default: `dynamic`).
+- `--weights`: Comma-separated percentage weights for slide durations (e.g. `10,10,20`). Any unweighted images will split the remaining percentage evenly. When specified, beat-sync is automatically disabled.
 - `--preview [DURATION]`: Generate a short preview video of the specified length in seconds. Defaults to `10.0` seconds if `--preview` is specified without a value (e.g., `--preview 15.5` to compile a 15.5-second preview).
 - `--transition`: Overlap transition duration in seconds (default: `1.0`).
 - `--fps`: Frame rate of output video (default: `15`). Pass `--fps 12` to compile even faster.
