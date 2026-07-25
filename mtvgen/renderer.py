@@ -498,19 +498,27 @@ def create_music_video(
             beat_times = detect_beats(mp3_path)
             print(f"Detected {len(beat_times)} beats in audio.")
             
-            # Distribute images on beats
-            beats_per_image = max(1, round(len(beat_times) / num_images))
+            # Only keep beats that fall within the video duration (important for --preview mode)
+            beat_times = [t for t in beat_times if t < total_duration]
+            print(f"Filtered to {len(beat_times)} beats within video duration ({total_duration:.2f}s).")
             
-            transition_timestamps = [0.0]
-            for i in range(1, num_images):
-                beat_idx = min(len(beat_times) - 1, i * beats_per_image)
-                transition_timestamps.append(beat_times[beat_idx])
-            transition_timestamps.append(total_duration)
-            
-            for i in range(num_images):
-                image_timings.append((transition_timestamps[i], transition_timestamps[i+1]))
+            if len(beat_times) < num_images:
+                print(f"Not enough beats ({len(beat_times)}) for {num_images} images within the video duration. Falling back to uniform spacing.")
+                enable_beat_sync = False
+            else:
+                # Distribute images on beats
+                beats_per_image = max(1, round(len(beat_times) / num_images))
                 
-            print("Beat-synced slide transition timings generated.")
+                transition_timestamps = [0.0]
+                for i in range(1, num_images):
+                    beat_idx = min(len(beat_times) - 1, i * beats_per_image)
+                    transition_timestamps.append(beat_times[beat_idx])
+                transition_timestamps.append(total_duration)
+                
+                for i in range(num_images):
+                    image_timings.append((transition_timestamps[i], transition_timestamps[i+1]))
+                    
+                print("Beat-synced slide transition timings generated.")
         except Exception as e:
             print(f"Beat detection failed ({e}). Falling back to uniform spacing.")
             enable_beat_sync = False
