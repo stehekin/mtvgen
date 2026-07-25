@@ -510,13 +510,21 @@ def create_music_video(
                 print(f"Not enough beats ({len(beat_times)}) for {num_images} images within the video duration. Falling back to uniform spacing.")
                 enable_beat_sync = False
             else:
-                # Distribute images on beats
-                beats_per_image = max(1, round(len(beat_times) / num_images))
+                # Snapping beat-sync algorithm: start with uniform division and snap to closest beat
+                ideal_duration = total_duration / num_images
+                max_deviation = ideal_duration * 0.35  # Allow snapping within 35% of slide duration
                 
                 transition_timestamps = [0.0]
                 for i in range(1, num_images):
-                    beat_idx = min(len(beat_times) - 1, i * beats_per_image)
-                    transition_timestamps.append(beat_times[beat_idx])
+                    target_t = i * ideal_duration
+                    if beat_times:
+                        closest_beat = min(beat_times, key=lambda b: abs(b - target_t))
+                        if abs(closest_beat - target_t) <= max_deviation:
+                            transition_timestamps.append(closest_beat)
+                        else:
+                            transition_timestamps.append(target_t)
+                    else:
+                        transition_timestamps.append(target_t)
                 transition_timestamps.append(total_duration)
                 
                 for i in range(num_images):
