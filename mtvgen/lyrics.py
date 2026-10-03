@@ -326,6 +326,7 @@ def extract_lyrics(
     mp3_path: str | Path,
     lrc_path: Optional[str | Path] = None,
     whisper_model: str = "base",
+    force_whisper: bool = False,
 ) -> list[LyricLine]:
     """Extract synchronized lyrics using a multi-tier fallback strategy.
 
@@ -346,6 +347,11 @@ def extract_lyrics(
     from .metadata import get_metadata, get_embedded_lyrics
 
     mp3_path = Path(mp3_path)
+
+    # Debug/evaluation mode: skip every other source and use Whisper only
+    if force_whisper:
+        logger.info("--force-whisper: skipping LRC/embedded/online sources")
+        return transcribe_lyrics(mp3_path, model_size=whisper_model)
 
     # Tier 0: User-provided LRC file
     if lrc_path:
