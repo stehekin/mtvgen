@@ -1,120 +1,136 @@
-# MTVGen: Python Music Video Generator
+# 🎵 MTVGen — Music TV Generator
 
-MTVGen is a high-performance, non-AI Python application that compiles images, an audio track, and lyrics into a synchronized music video. It features automatic Chinese/Japanese/Korean typography rendering, beat-synchronized slideshow transitions, and fast GPU-like transitions that compile in seconds on standard CPUs.
+Generate visually stunning music videos (MTV) from MP3 files with synchronized lyrics.
 
----
+MTVGen automatically extracts lyrics, synchronizes them to the audio, and renders a cinematic video with audio-reactive visualizations, karaoke-style lyric highlights, and floating particle effects.
 
-## 1. Installation Guide
+## Features
 
-Modern Linux distributions restrict global Python package installations (PEP 668) to protect the operating system. To install and run MTVGen, you must use a Python **Virtual Environment (`venv`)**.
+- **Smart Lyric Extraction** — Multi-tier fallback:
+  1. Reads embedded lyrics from MP3 ID3 tags (SYLT/USLT)
+  2. Searches online via LRCLIB and other providers
+  3. Falls back to AI transcription (Whisper) with word-level timestamps
+- **Audio-Reactive Visuals** — 64-band FFT spectrum analyzer that pulses with the music
+- **Karaoke-Style Lyrics** — Words highlight progressively as they're sung
+- **Cinematic Background** — Animated gradients with floating particles
+- **1080p Output** — High-quality MP4 video at 30fps
 
-### System Prerequisites
-Ensure you have the Python 3 virtual environment package installed:
-- **Ubuntu/Debian**: `sudo apt install python3-venv python3-full`
-- **Fedora/RHEL**: `sudo dnf install python3-devel`
-- **Arch Linux**: Included by default in `python`.
+## Prerequisites
 
-### Setup Steps
-Run these commands in your project terminal:
+- **Python 3.10+**
+- **Node.js 18+** (for Remotion video rendering)
+- **FFmpeg** (for video encoding)
+
+## Installation
 
 ```bash
-# 1. Create a virtual environment named 'venv' in your project root
-python3 -m venv venv
+# Clone the repo
+git clone https://github.com/youruser/mtvgen.git
+cd mtvgen
 
-# 2. Activate the virtual environment
-source venv/bin/activate
-
-# 3. Install the dependencies inside the virtual environment
+# Set up Python environment
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
+
+# Install Remotion dependencies (auto-installed on first run)
+cd remotion && npm install && cd ..
 ```
 
-> [!NOTE]
-> When the virtual environment is active, your terminal prompt will show `(venv)`. You can exit the virtual environment at any time by running:
-> ```bash
-> deactivate
-> ```
+## Usage
 
----
-
-## 2. Quick Start: Testing the Installation
-
-We have included a script to generate mock files (solid-color pictures, a 15-second WAV synth song, and test lyrics) so you can test the program instantly.
-
-### 1. Generate Test Assets
+### Basic usage
 ```bash
-python3 /home/qiang/.gemini/antigravity/brain/15946ce4-f695-4016-af6f-124d4ccf1659/scratch/test_setup.py
+python -m mtvgen song.mp3
 ```
-This creates a `test_assets/` folder in your workspace containing mock assets.
 
-### 2. Generate a Video
+This will:
+1. Extract the song's metadata (title, artist)
+2. Search for synchronized lyrics online
+3. Render an MTV video → `song_mtv.mp4`
+
+### With a pre-made LRC file
 ```bash
-python3 main.py -i test_assets -l test_assets/lyrics.lrc -s test_assets/song.wav -o output.mp4 -m lrc
+python -m mtvgen song.mp3 --lyrics song.lrc
 ```
-This will compile a video named `output.mp4` using the pre-timed LRC file.
 
----
-
-## 3. Usage Manual
-
-### Command Structure
+### Specify output path
 ```bash
-python3 main.py -i <images_input> -l <lyrics_file> -s <audio_file> [options]
+python -m mtvgen song.mp3 -o my_video.mp4
 ```
 
-### Required Arguments:
-- `-i, --images`: Path to a directory containing images, or a comma-separated list of image files.
-- `-l, --lyrics`: Path to the lyrics file (either a plain `.txt` file or a timed `.lrc` file).
-- `-s, --song`: Path to the audio file (`.wav` or `.mp3`).
+### Extract lyrics only (no video)
+```bash
+python -m mtvgen song.mp3 --lyrics-only
+```
 
-### Optional Customization Arguments:
-- `-o, --output`: Name of the output video file (default: `output.mp4`).
-- `-r, --resolution`: Video aspect ratio and resolution preset (choices: `landscape` (720p), `portrait` (720p), `square` (720p), `landscape_1080p`, `landscape_720p`, `landscape_480p`, `portrait_1080p`, `portrait_720p`, `portrait_480p`, `square_720p`, `square_480p`; default: `landscape`).
-- `-m, --mode`: Alignment strategy (choices: `auto`, `tap`, `lrc`, `energy`, `linear`; default: `auto`).
-- `--effect`: Slide transition style (choices: `fade`, `focus-reveal`, `grayscale-reveal`, `flash-white`, `random`; default: `random`).
-- `--title`: Song title to display at the beginning of the video (defaults to extracting from audio filename).
-- `--font`: Path to a custom TrueType/OpenType font file (e.g. `.ttf` or `.otf`) to use for video text rendering.
-- `--font-size`: Font size for the lyric text overlay (default: `56`).
-- `--title-size`: Font size for the song title card (default: `110`).
-- `--font-color`: Text color (supports standard names like `white`, `yellow`, `red`, hex codes like `#FFCC00`, or comma-separated RGB integers like `255,204,0`; default: `white`).
-- `--box-color`: Bounding box background color (supports RGBA comma-separated values like `0,0,0,100` or hex like `#00000064`; default: semi-transparent black `0,0,0,100`).
-- `--shadow-color`: Text drop shadow color (supports RGBA comma-separated values like `0,0,0,150` or hex like `#00000096`; default: dark shadow `0,0,0,150`).
-- `--lyric-pos`: Screen position of the lyrics (choices: `dynamic` (bottom in first 5s, center thereafter), `top`, `center`, `bottom`; default: `dynamic`).
-- `--weights`: Comma-separated percentage weights for slide durations (e.g. `10,10,20`). Any unweighted images will split the remaining percentage evenly. When specified, beat-sync is automatically disabled.
-- `--preview [DURATION]`: Generate a short preview video of the specified length in seconds. Defaults to `10.0` seconds if `--preview` is specified without a value (e.g., `--preview 15.5` to compile a 15.5-second preview).
-- `--transition`: Overlap transition duration in seconds (default: `1.0`).
-- `--fps`: Frame rate of output video (default: `15`). Pass `--fps 12` to compile even faster.
-- `--no-beat-sync`: Disables aligning slide transitions to the drum beats in the song.
+### Use a larger Whisper model for better transcription
+```bash
+python -m mtvgen song.mp3 --whisper-model medium
+```
 
----
+### Preview in Remotion Studio (interactive)
+```bash
+cd remotion
+npx remotion studio
+```
 
-## 4. Lyric Alignment Modes (`-m`)
+## CLI Options
 
-MTVGen supports four distinct lyric alignment techniques depending on your timing requirements:
+| Option | Default | Description |
+|--------|---------|-------------|
+| `input` | (required) | Path to the input MP3 file |
+| `-o, --output` | `<input>_mtv.mp4` | Output MP4 file path |
+| `--lyrics` | None | Path to a pre-made `.lrc` file |
+| `--whisper-model` | `base` | Whisper model size: `tiny`, `base`, `small`, `medium`, `large-v3` |
+| `--resolution` | `1920x1080` | Output video resolution |
+| `--lyrics-only` | false | Only extract lyrics as JSON, skip video |
+| `-v, --verbose` | false | Enable debug logging |
 
-| Mode | Input Required | Computation | Best For |
-| :--- | :--- | :--- | :--- |
-| **`lrc`** | Timed `.lrc` file | Instant | Perfect, frame-accurate synchronization with zero CPU overhead. |
-| **`tap`** | Plain `.txt` lyrics | Manual Tapping | Fast, simple timing setup. Play the song in the terminal and press `Enter` to stamp when each line starts. Automatically generates a `.lrc` file for future runs. |
-| **`energy`** | Plain `.txt` lyrics | <1s DSP analysis | Fully automated alignment without manual work or heavy AI dependencies. Uses a Butterworth bandpass filter to isolate vocal frequencies (200Hz - 2000Hz) and maps lyrics only to active singing segments. |
-| **`linear`** | Plain `.txt` lyrics | Instant | Evenly distributes lyric lines across the song's duration (ignoring intros/solos). |
+## Architecture
 
----
+```
+MP3 File
+  │
+  ├─→ [Python] Metadata extraction (mutagen)
+  ├─→ [Python] Lyric search (syncedlyrics → LRCLIB → Whisper)
+  │     │
+  │     └─→ lyrics.json
+  │
+  └─→ [Remotion] Video rendering
+        ├─ Animated gradient background
+        ├─ Floating particles
+        ├─ 64-band FFT spectrum visualizer
+        └─ Synchronized lyric display (karaoke mode)
+              │
+              └─→ output.mp4
+```
 
-## 5. Transition Effects (`--effect`)
+## Project Structure
 
-To make the video feel professional, MTVGen uses high-performance transition effects that run instantly without GPU overhead:
+```
+mtvgen/
+├── mtvgen/                 # Python package
+│   ├── cli.py              # CLI entry point
+│   ├── metadata.py         # MP3 metadata extraction
+│   ├── lyrics.py           # Multi-tier lyric retrieval
+│   └── models.py           # Data models (SongData, LyricLine, LyricWord)
+├── remotion/               # Remotion video project
+│   ├── src/
+│   │   ├── Root.tsx        # Composition registration
+│   │   ├── MTV.tsx         # Main video composition
+│   │   ├── components/
+│   │   │   ├── Background.tsx
+│   │   │   ├── SpectrumVisualizer.tsx
+│   │   │   ├── LyricsDisplay.tsx
+│   │   │   └── Particles.tsx
+│   │   └── utils/
+│   │       └── lyrics.ts   # TypeScript lyric helpers
+│   └── public/             # Audio + lyrics placed here at runtime
+├── requirements.txt
+└── README.md
+```
 
-- **`fade`**: Classic, elegant crossfade between slides. The video automatically fades in from black at the beginning and fades out to black at the end.
-- **`focus-reveal`**: The slide starts out heavily blurred (bokeh focus effect) and resolves into crisp focus over 1.5 seconds.
-- **`grayscale-reveal`**: The slide starts in black & white and fades into full color over 1.5 seconds.
-- **`flash-white`**: A quick, 0.4-second white camera flash that highlights the moment of transition.
-- **`random`**: Randomly chooses one of the available transitions (`fade`, `focus-reveal`, `grayscale-reveal`, or `flash-white`) for each slide transition.
+## License
 
----
-
-## 6. Premium Layout & Design System
-
-The app's design aesthetics are managed centrally in `mtvgen/config.py`:
-- **Glassmorphic Bounding Box**: Lyrics are rendered inside a semi-transparent black pill box (acrylic overlay) positioned in the bottom third of the screen.
-- **Auto CJK Font Loading**: The app scans your lyrics for Chinese, Japanese, or Korean characters. If found, it automatically bypasses Western fonts and loads CJK-compatible fonts (like Droid Sans Fallback or WenQuanYi Micro Hei) to prevent characters from showing as blank rectangles.
-- **High-Readability Typography**: Features text outlines and drop shadows, ensuring text is legible on bright or busy background images.
+MIT
