@@ -88,6 +88,7 @@ def render_video(
     mp3_path: Path,
     output_path: Path,
     resolution: str = "1920x1080",
+    theme: str = "neon",
 ) -> None:
     """Invoke Remotion to render the MTV video.
 
@@ -96,6 +97,7 @@ def render_video(
         mp3_path: Path to the input MP3 file
         output_path: Desired output MP4 path
         resolution: Video resolution (e.g. '1920x1080')
+        theme: Video visual theme ('neon', 'vaporwave', 'minimal', 'cosmic')
     """
     ensure_remotion_deps()
 
@@ -115,6 +117,7 @@ def render_video(
     input_props = {
         "audioFile": "audio.mp3",
         "songData": song_data.to_dict(),
+        "theme": theme,
     }
     props_json = json.dumps(input_props)
 
@@ -179,6 +182,13 @@ def main(argv: list[str] | None = None) -> int:
         type=str,
         default="1920x1080",
         help="Output video resolution (default: 1920x1080)",
+    )
+    parser.add_argument(
+        "--theme",
+        type=str,
+        default="neon",
+        choices=["neon", "vaporwave", "minimal", "cosmic"],
+        help="Video visual theme: neon (default), vaporwave, minimal, cosmic",
     )
     parser.add_argument(
         "--lyrics-only",
@@ -285,7 +295,7 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("=" * 50)
     logger.info("Step 4: Rendering MTV video...")
     try:
-        render_video(song_data, mp3_path, output_path, args.resolution)
+        render_video(song_data, mp3_path, output_path, resolution=args.resolution, theme=args.theme)
     except Exception as e:
         logger.error(f"Video rendering failed: {e}")
         return 1

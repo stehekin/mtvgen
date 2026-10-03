@@ -6,6 +6,7 @@ import './styles.css';
 export type MTVProps = {
   songData: SongData;
   audioFile: string;
+  theme?: 'neon' | 'vaporwave' | 'minimal' | 'cosmic';
 };
 
 const FPS = 30;
