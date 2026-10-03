@@ -186,6 +186,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Only extract lyrics and save as JSON (skip video rendering)",
     )
     parser.add_argument(
+        "--separate-vocals",
+        action="store_true",
+        help="Isolate vocal track using Demucs before forced alignment",
+    )
+    parser.add_argument(
         "--allow-no-lyrics",
         action="store_true",
         help="Render the video even if no lyrics could be found",
@@ -235,6 +240,7 @@ def main(argv: list[str] | None = None) -> int:
     lyrics = extract_lyrics(
         mp3_path,
         lrc_path=args.lyrics,
+        separate_vocals_first=args.separate_vocals,
     )
     logger.info(f"  Found {len(lyrics)} lyric lines")
 

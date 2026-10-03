@@ -1,22 +1,21 @@
-"""Multi-tier lyric retrieval: embedded tags → online (LRCLIB, etc.)."""
+"""Multi-tier lyric retrieval: embedded tags → online (Kugou/NetEase/LRCLIB) → Vocal Separation + Forced Alignment."""
 
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
 import time
 from pathlib import Path
 from typing import Optional
 
+from .aligner import align_lyrics
 from .models import LyricLine, LyricWord
+from .providers import fetch_kugou_lyrics, fetch_netease_lyrics
+from .separator import separate_vocals
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# LRC Parsing
-# ---------------------------------------------------------------------------
 
 # Matches a leading line tag like [01:23.45], [01:23:45] or [01:23]
 _LRC_TAG_RE = re.compile(r"\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]\s*")
@@ -28,23 +27,17 @@ def _lrc_timestamp_to_seconds(minutes: str, seconds: str, centis: Optional[str])
     """Convert LRC timestamp components to seconds."""
     m = int(minutes)
     s = int(seconds)
-    # Fractional part may be absent, or 1-3 digits (tenths/centiseconds/milliseconds)
     frac = int(centis) / (10 ** len(centis)) if centis else 0.0
     return m * 60.0 + s + frac
 
 
 def parse_lrc(lrc_content: str) -> list[LyricLine]:
-    """Parse an LRC string into a list of LyricLine objects.
-
-    Supports both standard LRC (line-level timestamps) and enhanced LRC
-    (word-level timestamps with <mm:ss.xx> inline tags).
-    """
+    """Parse an LRC string into a list of LyricLine objects."""
     lines: list[LyricLine] = []
 
     for raw_line in lrc_content.strip().splitlines():
         raw_line = raw_line.strip()
 
-        # Collect every leading timestamp (a line may repeat, e.g. [00:10.00][01:20.00]text)
         stamps: list[float] = []
         pos = 0
         while True:
@@ -62,69 +55,54 @@ def parse_lrc(lrc_content: str) -> list[LyricLine]:
         if not text:
             continue
 
-        # Check for enhanced LRC word-level timestamps
         word_matches = list(_LRC_WORD_RE.finditer(text))
         words: Optional[list[LyricWord]] = None
 
         if word_matches:
-            # Enhanced LRC: extract word timestamps
             clean_text_parts = []
             words = []
-            # Split text by word timestamp markers
             segments = _LRC_WORD_RE.split(text)
-            # segments alternates: text, min, sec, centi, text, min, sec, centi, ...
             idx = 0
             while idx < len(segments):
                 word_text = segments[idx].strip()
                 if word_text:
                     clean_text_parts.append(word_text)
-                    # Determine this word's start time
                     if idx == 0:
                         word_start = start
                     else:
-                        # Previous group: idx-3=min, idx-2=sec, idx-1=centi
                         word_start = _lrc_timestamp_to_seconds(
                             segments[idx - 3], segments[idx - 2], segments[idx - 1]
                         )
-                    # Determine end time: next timestamp or line end
                     if idx + 3 < len(segments):
                         word_end = _lrc_timestamp_to_seconds(
                             segments[idx + 1], segments[idx + 2], segments[idx + 3]
                         )
                     else:
-                        word_end = word_start + 1.0  # Placeholder; fixed below
+                        word_end = word_start + 1.0
                     words.append(LyricWord(word=word_text, start=word_start, end=word_end))
                 idx += 4
 
             text = " ".join(clean_text_parts)
 
         lines.append(LyricLine(text=text, start=start, end=0.0, words=words))
-        # Repeated timestamps: word timings are absolute, so extra copies are line-level only
         for extra in stamps[1:]:
             lines.append(LyricLine(text=text, start=extra, end=0.0, words=None))
 
     lines.sort(key=lambda l: l.start)
 
-    # Fix end times: each line ends when the next begins (or + 5s for last)
     for i in range(len(lines)):
         if i + 1 < len(lines):
             lines[i].end = lines[i + 1].start
         else:
             lines[i].end = lines[i].start + 5.0
 
-        # Fix last word end time to match line end
         if lines[i].words and lines[i].words[-1].end > lines[i].end:
             lines[i].words[-1].end = lines[i].end
 
     return lines
 
 
-# ---------------------------------------------------------------------------
-# Online Lyric Fetching
-# ---------------------------------------------------------------------------
-
 def _query_variants(title: str, artist: str) -> list[str]:
-    """Search strings to try, most specific first, without duplicates."""
     variants: list[str] = []
     for q in (f"{title} {artist}", title, f"{artist} {title}"):
         q = q.strip()
@@ -134,20 +112,10 @@ def _query_variants(title: str, artist: str) -> list[str]:
 
 
 def fetch_online_lyrics(title: str, artist: str) -> Optional[str]:
-    """Fetch synchronized lyrics from online sources (LRCLIB, etc.).
-
-    Uses the `syncedlyrics` library which aggregates LRCLIB, NetEase,
-    Musixmatch, and other providers. Because providers are flaky (and the
-    library swallows their errors), each query variant is tried twice:
-    first for enhanced (word-level) LRC, then for line-level LRC.
-
-    Returns:
-        LRC string if found, None otherwise
-    """
     try:
         import syncedlyrics
     except ImportError:
-        logger.warning("syncedlyrics not installed, skipping online search")
+        logger.warning("syncedlyrics not installed, skipping aggregator")
         return None
 
     for search_term in _query_variants(title, artist):
@@ -157,19 +125,15 @@ def fetch_online_lyrics(title: str, artist: str) -> Optional[str]:
                 lrc = syncedlyrics.search(search_term, enhanced=enhanced)
             except Exception as e:
                 logger.warning(f"Online lyrics search failed ({search_term!r}): {e}")
-                time.sleep(1.0 + attempt)
+                time.sleep(0.5)
                 continue
             if lrc and parse_lrc(lrc):
                 logger.info(f"Found synced lyrics online ({len(lrc)} chars)")
                 return lrc
-            time.sleep(0.5)
+            time.sleep(0.3)
 
     return None
 
-
-# ---------------------------------------------------------------------------
-# Lyric cache (so a once-successful lookup survives flaky providers)
-# ---------------------------------------------------------------------------
 
 _CACHE_DIR = Path.home() / ".cache" / "mtvgen" / "lyrics"
 
@@ -196,71 +160,17 @@ def _write_cache(title: str, artist: str, duration: Optional[float], lrc: str) -
         logger.debug(f"Could not write lyric cache: {e}")
 
 
-# ---------------------------------------------------------------------------
-# Direct LRCLIB API Fallback
-# ---------------------------------------------------------------------------
-
-def fetch_lrclib_lyrics(title: str, artist: str, duration: Optional[float] = None) -> Optional[str]:
-    """Fetch synchronized lyrics directly from LRCLIB API.
-
-    This is a fallback when `syncedlyrics` doesn't find results.
-    """
-    try:
-        import requests
-    except ImportError:
-        logger.warning("requests not installed, skipping LRCLIB")
-        return None
-
-    url = "https://lrclib.net/api/get"
-    headers = {"User-Agent": "MTVGen/1.0 (github.com/mtvgen)"}
-    params = {"track_name": title, "artist_name": artist}
-    if duration:
-        params["duration"] = int(duration)
-
-    logger.info(f"Querying LRCLIB API: title='{title}', artist='{artist}'")
-
-    try:
-        resp = requests.get(url, params=params, headers=headers, timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            synced = data.get("syncedLyrics")
-            if synced:
-                logger.info(f"Found synced lyrics from LRCLIB ({len(synced)} chars)")
-                return synced
-            plain = data.get("plainLyrics")
-            if plain:
-                logger.info("Found plain lyrics from LRCLIB (no timestamps)")
-                # Can't use plain text without alignment, return None
-                return None
-        else:
-            logger.debug(f"LRCLIB returned status {resp.status_code}")
-    except Exception as e:
-        logger.warning(f"LRCLIB API request failed: {e}")
-
-    return None
-
-
-# ---------------------------------------------------------------------------
-# Main Extraction Pipeline
-# ---------------------------------------------------------------------------
-
 def extract_lyrics(
     mp3_path: str | Path,
     lrc_path: Optional[str | Path] = None,
+    separate_vocals_first: bool = False,
 ) -> list[LyricLine]:
-    """Extract synchronized lyrics using a multi-tier fallback strategy.
+    """Extract synchronized lyrics using a multi-tier strategy:
 
-    Priority:
-      1. User-provided LRC file (--lyrics flag)
-      2. Embedded synced lyrics (SYLT ID3 tag)
-      3. Online search (syncedlyrics → LRCLIB)
-
-    Args:
-        mp3_path: Path to the MP3 file
-        lrc_path: Optional path to a pre-made .lrc file
-
-    Returns:
-        List of LyricLine objects
+    Tier 0: User-provided LRC file
+    Tier 1: Embedded SYLT lyrics in MP3 tags
+    Tier 2: Online providers (Kugou -> NetEase -> LRCLIB/syncedlyrics -> Cache)
+    Tier 3: Plain text + Demucs Vocal Separation + PyTorch Forced Alignment
     """
     from .metadata import get_metadata, get_embedded_lyrics
 
@@ -273,27 +183,35 @@ def extract_lyrics(
         lrc_content = lrc_path.read_text(encoding="utf-8")
         lines = parse_lrc(lrc_content)
         if lines:
-            logger.info(f"Parsed {len(lines)} lines from LRC file")
+            logger.info(f"✓ Parsed {len(lines)} lines from provided LRC file")
             return lines
-        logger.warning("Provided LRC file yielded no lines, falling through")
+        else:
+            # If provided file was plain text without timestamps, perform forced alignment on it!
+            logger.info("Provided file has no timestamps; proceeding with forced alignment...")
+            plain_text_lines = [l.strip() for l in lrc_content.splitlines() if l.strip()]
+            vocal_track = separate_vocals(mp3_path) if separate_vocals_first else None
+            aligned = align_lyrics(mp3_path, plain_text_lines, vocals_path=vocal_track)
+            if aligned:
+                return aligned
 
-    # Get metadata for online search
     meta = get_metadata(mp3_path)
     title = meta["title"]
     artist = meta["artist"]
     duration = meta["duration"]
 
-    # Tier 1: Embedded lyrics in MP3 tags
+    # Tier 1: Embedded synced lyrics
     logger.info("Tier 1: Checking embedded lyrics in MP3 tags...")
     embedded = get_embedded_lyrics(mp3_path)
+    plain_embedded_text: Optional[str] = None
     if embedded:
         if "synced" in embedded:
             logger.info("✓ Found embedded synced lyrics (SYLT)")
             return embedded["synced"]
-        # Plain text lyrics can't be used without alignment
-        logger.info("Found embedded plain lyrics (USLT) but no timestamps")
+        if "unsynced" in embedded:
+            plain_embedded_text = embedded["unsynced"]
+            logger.info("Found embedded plain text lyrics (USLT)")
 
-    # Tier 2: Cache, then online search
+    # Tier 2: Disk cache check
     cached = _read_cache(title, artist, duration)
     if cached:
         lines = parse_lrc(cached)
@@ -301,29 +219,46 @@ def extract_lyrics(
             logger.info(f"✓ Using cached lyrics: {len(lines)} lines")
             return lines
 
-    logger.info("Tier 2: Searching for lyrics online...")
+    # Tier 2: Online providers check
+    logger.info("Tier 2: Searching online synced lyric providers...")
 
-    # Try syncedlyrics aggregator
-    lrc_content = fetch_online_lyrics(title, artist)
-    if lrc_content:
-        lines = parse_lrc(lrc_content)
+    # Provider A: Kugou Music
+    kugou_lrc = fetch_kugou_lyrics(title, artist, duration)
+    if kugou_lrc:
+        lines = parse_lrc(kugou_lrc)
         if lines:
-            logger.info(f"✓ Found online synced lyrics: {len(lines)} lines")
-            _write_cache(title, artist, duration, lrc_content)
+            _write_cache(title, artist, duration, kugou_lrc)
             return lines
 
-    # Try direct LRCLIB API (with retries; the server sometimes returns 503)
-    for attempt in range(3):
-        lrc_content = fetch_lrclib_lyrics(title, artist, duration)
-        if lrc_content:
-            break
-        time.sleep(1.0 + attempt)
-    if lrc_content:
-        lines = parse_lrc(lrc_content)
+    # Provider B: NetEase Cloud Music
+    netease_lrc = fetch_netease_lyrics(title, artist)
+    if netease_lrc:
+        lines = parse_lrc(netease_lrc)
         if lines:
-            logger.info(f"✓ Found LRCLIB synced lyrics: {len(lines)} lines")
-            _write_cache(title, artist, duration, lrc_content)
+            _write_cache(title, artist, duration, netease_lrc)
             return lines
 
-    logger.warning("No lyrics could be extracted from any source")
+    # Provider C: Syncedlyrics Aggregator (LRCLIB, Musixmatch, Megalobiz, Genius)
+    agg_lrc = fetch_online_lyrics(title, artist)
+    if agg_lrc:
+        lines = parse_lrc(agg_lrc)
+        if lines:
+            _write_cache(title, artist, duration, agg_lrc)
+            return lines
+
+    # Tier 3: Plain text + Vocal Separation + Forced Alignment
+    logger.info("Tier 3: No synced lyrics found online. Searching plain text lyrics for alignment...")
+
+    plain_lines: list[str] = []
+    if plain_embedded_text:
+        plain_lines = [line.strip() for line in plain_embedded_text.splitlines() if line.strip()]
+
+    if plain_lines:
+        logger.info(f"Found {len(plain_lines)} plain text lyric lines to align.")
+        vocal_track = separate_vocals(mp3_path)
+        aligned = align_lyrics(mp3_path, plain_lines, vocals_path=vocal_track)
+        if aligned:
+            return aligned
+
+    logger.warning("No lyrics could be extracted or aligned from any source")
     return []

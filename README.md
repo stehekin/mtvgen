@@ -6,9 +6,10 @@ MTVGen automatically extracts lyrics, synchronizes them to the audio, and render
 
 ## Features
 
-- **Smart Lyric Extraction** — Multi-tier fallback:
-  1. Reads embedded lyrics from MP3 ID3 tags (SYLT/USLT)
-  2. Searches online via LRCLIB and other providers
+- **Multi-Tier Smart Lyric System** — Seamless fallback pipeline:
+  1. Reads embedded synced lyrics (SYLT) or provided `.lrc` files
+  2. Searches top Chinese & global synced lyric services (**Kugou**, **NetEase**, **LRCLIB**, **Musixmatch**, **Genius**)
+  3. **Demucs Vocal Separation** + **PyTorch MMS Forced Alignment** for plain text lyrics
 - **Audio-Reactive Visuals** — 64-band FFT spectrum analyzer that pulses with the music
 - **Karaoke-Style Lyrics** — Words highlight progressively as they're sung
 - **Cinematic Background** — Animated gradients with floating particles
@@ -24,7 +25,7 @@ MTVGen automatically extracts lyrics, synchronizes them to the audio, and render
 
 ```bash
 # Clone the repo
-git clone https://github.com/youruser/mtvgen.git
+git clone https://github.com/stehekin/mtvgen.git
 cd mtvgen
 
 # Set up Python environment
@@ -45,12 +46,16 @@ python -m mtvgen song.mp3
 
 This will:
 1. Extract the song's metadata (title, artist)
-2. Search for synchronized lyrics online
+2. Search for synchronized lyrics across Kugou, NetEase, LRCLIB, and global databases
 3. Render an MTV video → `song_mtv.mp4`
 
-### With a pre-made LRC file
+### With a pre-made LRC file or plain text lyrics
 ```bash
+# Synced LRC file
 python -m mtvgen song.mp3 --lyrics song.lrc
+
+# Plain text file (automatically aligned with MMS Forced Alignment)
+python -m mtvgen song.mp3 --lyrics lyrics.txt --separate-vocals
 ```
 
 ### Specify output path
@@ -75,9 +80,11 @@ npx remotion studio
 |--------|---------|-------------|
 | `input` | (required) | Path to the input MP3 file |
 | `-o, --output` | `<input>_mtv.mp4` | Output MP4 file path |
-| `--lyrics` | None | Path to a pre-made `.lrc` file |
+| `--lyrics` | None | Path to a pre-made `.lrc` file or plain text file |
+| `--separate-vocals` | false | Isolate vocal track using Demucs before forced alignment |
 | `--resolution` | `1920x1080` | Output video resolution |
 | `--lyrics-only` | false | Only extract lyrics as JSON, skip video |
+| `--allow-no-lyrics` | false | Render even if no lyrics were found |
 | `-v, --verbose` | false | Enable debug logging |
 
 ## Architecture
@@ -86,9 +93,12 @@ npx remotion studio
 MP3 File
   │
   ├─→ [Python] Metadata extraction (mutagen)
-  ├─→ [Python] Lyric search (syncedlyrics → LRCLIB)
-  │     │
-  │     └─→ lyrics.json
+  ├─→ [Python] Lyric retrieval:
+  │     ├─ Tier 1: Embedded SYLT ID3 tags / LRC file
+  │     ├─ Tier 2: Chinese & Global APIs (Kugou → NetEase → LRCLIB / Musixmatch)
+  │     └─ Tier 3: Demucs Vocal Separation + PyTorch MMS Forced Alignment
+  │           │
+  │           └─→ lyrics.json
   │
   └─→ [Remotion] Video rendering
         ├─ Animated gradient background
@@ -97,31 +107,6 @@ MP3 File
         └─ Synchronized lyric display (karaoke mode)
               │
               └─→ output.mp4
-```
-
-## Project Structure
-
-```
-mtvgen/
-├── mtvgen/                 # Python package
-│   ├── cli.py              # CLI entry point
-│   ├── metadata.py         # MP3 metadata extraction
-│   ├── lyrics.py           # Multi-tier lyric retrieval
-│   └── models.py           # Data models (SongData, LyricLine, LyricWord)
-├── remotion/               # Remotion video project
-│   ├── src/
-│   │   ├── Root.tsx        # Composition registration
-│   │   ├── MTV.tsx         # Main video composition
-│   │   ├── components/
-│   │   │   ├── Background.tsx
-│   │   │   ├── SpectrumVisualizer.tsx
-│   │   │   ├── LyricsDisplay.tsx
-│   │   │   └── Particles.tsx
-│   │   └── utils/
-│   │       └── lyrics.ts   # TypeScript lyric helpers
-│   └── public/             # Audio + lyrics placed here at runtime
-├── requirements.txt
-└── README.md
 ```
 
 ## License
