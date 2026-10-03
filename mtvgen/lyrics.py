@@ -1,11 +1,9 @@
-"""Multi-tier lyric retrieval: embedded tags → online (LRCLIB, etc.) → Gemini transcription."""
+"""Multi-tier lyric retrieval: embedded tags → online (LRCLIB) → Whisper transcription."""
 
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
-import os
 import re
 import time
 from pathlib import Path
@@ -243,136 +241,80 @@ def fetch_lrclib_lyrics(title: str, artist: str, duration: Optional[float] = Non
 
 
 # ---------------------------------------------------------------------------
-# Gemini Transcription (Fallback)
+# Whisper Transcription (Fallback)
 # ---------------------------------------------------------------------------
 
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+def transcribe_lyrics(mp3_path: str | Path, model_size: str = "base") -> list[LyricLine]:
+    """Transcribe lyrics from audio using faster-whisper with word timestamps.
 
-_GEMINI_PROMPT = """You are transcribing the lyrics of a song from its audio.
-
-Return a JSON array. Each item is one sung line (phrase) of the lyrics:
-  - "start": the time the line begins being sung, formatted MM:SS.s (e.g. "01:23.5")
-  - "text": the lyrics of that line
-
-Rules:
-- Transcribe exactly what is sung, in the original language(s) of the song. Do not translate.
-- Chinese/Cantonese lyrics: write the standard Chinese characters of the actual lyrics.
-- Skip instrumental sections. Do not output credits, song titles, singer names,
-  annotations like [Chorus] or (music), or any text that is not sung.
-- If a line is repeated in the song, output it again at its new time.
-- Do not invent lyrics. If a part is unintelligible, omit it.
-- Timestamps must be increasing and match the audio as precisely as you can.
-"""
-
-_GEMINI_SCHEMA = {
-    "type": "ARRAY",
-    "items": {
-        "type": "OBJECT",
-        "properties": {
-            "start": {"type": "STRING"},
-            "text": {"type": "STRING"},
-        },
-        "required": ["start", "text"],
-    },
-}
-
-
-def _parse_timestamp(value) -> Optional[float]:
-    """Parse 'MM:SS.s', 'H:MM:SS', or a plain number of seconds."""
-    if isinstance(value, (int, float)):
-        return float(value)
-    parts = str(value).strip().replace(",", ".").split(":")
-    try:
-        seconds = 0.0
-        for part in parts:
-            seconds = seconds * 60 + float(part)
-        return seconds
-    except ValueError:
-        return None
-
-
-def transcribe_lyrics(
-    mp3_path: str | Path,
-    model: str = DEFAULT_GEMINI_MODEL,
-    duration: Optional[float] = None,
-) -> list[LyricLine]:
-    """Transcribe lyrics from audio with Gemini (line-level timestamps).
-
-    Last-resort fallback when no synced lyrics are found elsewhere. Requires
-    the GEMINI_API_KEY (or GOOGLE_API_KEY) environment variable.
+    This is the last-resort fallback when no lyrics are found online.
 
     Args:
         mp3_path: Path to the MP3 file
-        model: Gemini model name
-        duration: Song length in seconds, used to drop out-of-range timestamps
+        model_size: Whisper model size ('tiny', 'base', 'small', 'medium', 'large-v3')
 
     Returns:
-        List of LyricLine (line-level timing only), empty on failure
+        List of LyricLine with word-level timestamps
     """
-    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    if not api_key:
-        logger.error("GEMINI_API_KEY is not set; cannot transcribe lyrics with Gemini")
-        return []
-
     try:
-        from google import genai
-        from google.genai import types
+        from faster_whisper import WhisperModel
     except ImportError:
-        logger.error("google-genai not installed. Install with: pip install google-genai")
+        logger.error("faster-whisper not installed. Install with: pip install faster-whisper")
         return []
 
-    logger.info(f"Transcribing lyrics with Gemini (model={model})...")
-    client = genai.Client(api_key=api_key)
+    mp3_path = str(mp3_path)
+    logger.info(f"Transcribing with faster-whisper (model={model_size})...")
 
-    uploaded = None
+    # Detect device
     try:
-        uploaded = client.files.upload(file=str(mp3_path))
-        # Wait until the uploaded audio is ready for use
-        for _ in range(60):
-            state = getattr(getattr(uploaded, "state", None), "name", None)
-            if state != "PROCESSING":
-                break
-            time.sleep(1.0)
-            uploaded = client.files.get(name=uploaded.name)
+        import torch
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        compute_type = "float16" if device == "cuda" else "int8"
+    except ImportError:
+        device = "cpu"
+        compute_type = "int8"
 
-        response = client.models.generate_content(
-            model=model,
-            contents=[uploaded, _GEMINI_PROMPT],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=_GEMINI_SCHEMA,
-                temperature=0.0,
-            ),
-        )
-        items = json.loads(response.text)
-    except Exception as e:
-        logger.error(f"Gemini transcription failed: {e}")
-        return []
-    finally:
-        if uploaded is not None:
-            try:
-                client.files.delete(name=uploaded.name)
-            except Exception:
-                pass
+    logger.info(f"Using device={device}, compute_type={compute_type}")
 
-    entries: list[tuple[float, str]] = []
-    for item in items:
-        text = str(item.get("text", "")).strip()
-        start = _parse_timestamp(item.get("start"))
-        if not text or start is None:
-            continue
-        if duration and start > duration + 1.0:
-            logger.debug(f"Dropping out-of-range line at {start:.1f}s: {text}")
-            continue
-        entries.append((start, text))
-    entries.sort(key=lambda e: e[0])
+    model = WhisperModel(model_size, device=device, compute_type=compute_type)
+
+    segments, info = model.transcribe(
+        mp3_path,
+        word_timestamps=True,
+        vad_filter=True,
+        vad_parameters=dict(min_silence_duration_ms=500),
+    )
+    segments = list(segments)
+    if not segments:
+        # VAD often treats sung vocals over instruments as non-speech; retry without it
+        logger.warning("Whisper found no speech with VAD; retrying without VAD filter...")
+        segments, info = model.transcribe(mp3_path, word_timestamps=True, vad_filter=False)
+        segments = list(segments)
+
+    logger.info(f"Detected language: {info.language} (probability={info.language_probability:.2f})")
 
     lines: list[LyricLine] = []
-    for i, (start, text) in enumerate(entries):
-        end = entries[i + 1][0] if i + 1 < len(entries) else start + 5.0
-        lines.append(LyricLine(text=text, start=start, end=end, words=None))
+    for segment in segments:
+        text = segment.text.strip()
+        if not text:
+            continue
 
-    logger.info(f"Gemini transcribed {len(lines)} lyric lines")
+        words = None
+        if segment.words:
+            words = [
+                LyricWord(word=w.word.strip(), start=w.start, end=w.end)
+                for w in segment.words
+                if w.word.strip()
+            ]
+
+        lines.append(LyricLine(
+            text=text,
+            start=segment.start,
+            end=segment.end,
+            words=words,
+        ))
+
+    logger.info(f"Transcribed {len(lines)} lyric lines")
     return lines
 
 
@@ -383,22 +325,21 @@ def transcribe_lyrics(
 def extract_lyrics(
     mp3_path: str | Path,
     lrc_path: Optional[str | Path] = None,
-    gemini_model: str = DEFAULT_GEMINI_MODEL,
-    force_gemini: bool = False,
+    whisper_model: str = "base",
+    force_whisper: bool = False,
 ) -> list[LyricLine]:
     """Extract synchronized lyrics using a multi-tier fallback strategy.
 
     Priority:
       1. User-provided LRC file (--lyrics flag)
       2. Embedded synced lyrics (SYLT ID3 tag)
-      3. Online search (syncedlyrics → LRCLIB), cached on success
-      4. Gemini transcription (fallback; needs GEMINI_API_KEY)
+      3. Online search (syncedlyrics → LRCLIB)
+      4. Whisper transcription (fallback)
 
     Args:
         mp3_path: Path to the MP3 file
         lrc_path: Optional path to a pre-made .lrc file
-        gemini_model: Gemini model used for the transcription fallback
-        force_gemini: Skip all other sources and use Gemini only (for testing)
+        whisper_model: Whisper model size for transcription fallback
 
     Returns:
         List of LyricLine objects
@@ -407,12 +348,10 @@ def extract_lyrics(
 
     mp3_path = Path(mp3_path)
 
-    # Debug/evaluation mode: skip every other source and use Gemini only
-    if force_gemini:
-        logger.info("--force-gemini: skipping LRC/embedded/online sources")
-        return transcribe_lyrics(
-            mp3_path, model=gemini_model, duration=get_metadata(mp3_path)["duration"]
-        )
+    # Debug/evaluation mode: skip every other source and use Whisper only
+    if force_whisper:
+        logger.info("--force-whisper: skipping LRC/embedded/online sources")
+        return transcribe_lyrics(mp3_path, model_size=whisper_model)
 
     # Tier 0: User-provided LRC file
     if lrc_path:
@@ -473,11 +412,11 @@ def extract_lyrics(
             _write_cache(title, artist, duration, lrc_content)
             return lines
 
-    # Tier 3: Gemini transcription
-    logger.info("Tier 3: No synced lyrics found online, falling back to Gemini transcription...")
-    lines = transcribe_lyrics(mp3_path, model=gemini_model, duration=duration)
+    # Tier 3: Whisper transcription
+    logger.info("Tier 3: No lyrics found online, falling back to Whisper transcription...")
+    lines = transcribe_lyrics(mp3_path, model_size=whisper_model)
     if lines:
-        logger.info(f"✓ Transcribed {len(lines)} lines with Gemini")
+        logger.info(f"✓ Transcribed {len(lines)} lines with Whisper")
         return lines
 
     logger.warning("No lyrics could be extracted from any source")
