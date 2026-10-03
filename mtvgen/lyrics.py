@@ -335,17 +335,38 @@ def transcribe_lyrics(
             time.sleep(1.0)
             uploaded = client.files.get(name=uploaded.name)
 
-        response = client.models.generate_content(
-            model=model,
-            contents=[uploaded, _GEMINI_PROMPT],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=_GEMINI_SCHEMA,
-                temperature=0.0,
-                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
-            ),
+        config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=_GEMINI_SCHEMA,
+            temperature=0.0,
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         )
-        items = json.loads(response.text)
+
+        items = None
+        max_attempts = 5
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=[uploaded, _GEMINI_PROMPT],
+                    config=config,
+                )
+                items = json.loads(response.text)
+                break
+            except Exception as e:
+                code = getattr(e, "code", None)
+                transient = (
+                    code in (429, 500, 502, 503, 504)
+                    or isinstance(e, (json.JSONDecodeError, TypeError))  # empty/invalid JSON
+                )
+                if not transient or attempt == max_attempts:
+                    raise
+                delay = 5 * 2 ** (attempt - 1)  # 5, 10, 20, 40 seconds
+                logger.warning(
+                    f"Gemini request failed ({code or type(e).__name__}); "
+                    f"retrying in {delay}s (attempt {attempt}/{max_attempts})..."
+                )
+                time.sleep(delay)
     except Exception as e:
         logger.error(f"Gemini transcription failed: {e}")
         return []
