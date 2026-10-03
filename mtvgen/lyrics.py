@@ -1,4 +1,4 @@
-"""Multi-tier lyric retrieval: embedded tags → online (LRCLIB) → Whisper transcription."""
+"""Multi-tier lyric retrieval: embedded tags → online (LRCLIB, etc.)."""
 
 from __future__ import annotations
 
@@ -241,92 +241,12 @@ def fetch_lrclib_lyrics(title: str, artist: str, duration: Optional[float] = Non
 
 
 # ---------------------------------------------------------------------------
-# Whisper Transcription (Fallback)
-# ---------------------------------------------------------------------------
-
-def transcribe_lyrics(mp3_path: str | Path, model_size: str = "base") -> list[LyricLine]:
-    """Transcribe lyrics from audio using faster-whisper with word timestamps.
-
-    This is the last-resort fallback when no lyrics are found online.
-
-    Args:
-        mp3_path: Path to the MP3 file
-        model_size: Whisper model size ('tiny', 'base', 'small', 'medium', 'large-v3')
-
-    Returns:
-        List of LyricLine with word-level timestamps
-    """
-    try:
-        from faster_whisper import WhisperModel
-    except ImportError:
-        logger.error("faster-whisper not installed. Install with: pip install faster-whisper")
-        return []
-
-    mp3_path = str(mp3_path)
-    logger.info(f"Transcribing with faster-whisper (model={model_size})...")
-
-    # Detect device
-    try:
-        import torch
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        compute_type = "float16" if device == "cuda" else "int8"
-    except ImportError:
-        device = "cpu"
-        compute_type = "int8"
-
-    logger.info(f"Using device={device}, compute_type={compute_type}")
-
-    model = WhisperModel(model_size, device=device, compute_type=compute_type)
-
-    segments, info = model.transcribe(
-        mp3_path,
-        word_timestamps=True,
-        vad_filter=True,
-        vad_parameters=dict(min_silence_duration_ms=500),
-    )
-    segments = list(segments)
-    if not segments:
-        # VAD often treats sung vocals over instruments as non-speech; retry without it
-        logger.warning("Whisper found no speech with VAD; retrying without VAD filter...")
-        segments, info = model.transcribe(mp3_path, word_timestamps=True, vad_filter=False)
-        segments = list(segments)
-
-    logger.info(f"Detected language: {info.language} (probability={info.language_probability:.2f})")
-
-    lines: list[LyricLine] = []
-    for segment in segments:
-        text = segment.text.strip()
-        if not text:
-            continue
-
-        words = None
-        if segment.words:
-            words = [
-                LyricWord(word=w.word.strip(), start=w.start, end=w.end)
-                for w in segment.words
-                if w.word.strip()
-            ]
-
-        lines.append(LyricLine(
-            text=text,
-            start=segment.start,
-            end=segment.end,
-            words=words,
-        ))
-
-    logger.info(f"Transcribed {len(lines)} lyric lines")
-    return lines
-
-
-# ---------------------------------------------------------------------------
 # Main Extraction Pipeline
 # ---------------------------------------------------------------------------
 
 def extract_lyrics(
     mp3_path: str | Path,
     lrc_path: Optional[str | Path] = None,
-    whisper_model: str = "base",
-    force_whisper: bool = False,
 ) -> list[LyricLine]:
     """Extract synchronized lyrics using a multi-tier fallback strategy.
 
@@ -334,12 +254,10 @@ def extract_lyrics(
       1. User-provided LRC file (--lyrics flag)
       2. Embedded synced lyrics (SYLT ID3 tag)
       3. Online search (syncedlyrics → LRCLIB)
-      4. Whisper transcription (fallback)
 
     Args:
         mp3_path: Path to the MP3 file
         lrc_path: Optional path to a pre-made .lrc file
-        whisper_model: Whisper model size for transcription fallback
 
     Returns:
         List of LyricLine objects
@@ -347,11 +265,6 @@ def extract_lyrics(
     from .metadata import get_metadata, get_embedded_lyrics
 
     mp3_path = Path(mp3_path)
-
-    # Debug/evaluation mode: skip every other source and use Whisper only
-    if force_whisper:
-        logger.info("--force-whisper: skipping LRC/embedded/online sources")
-        return transcribe_lyrics(mp3_path, model_size=whisper_model)
 
     # Tier 0: User-provided LRC file
     if lrc_path:
@@ -411,13 +324,6 @@ def extract_lyrics(
             logger.info(f"✓ Found LRCLIB synced lyrics: {len(lines)} lines")
             _write_cache(title, artist, duration, lrc_content)
             return lines
-
-    # Tier 3: Whisper transcription
-    logger.info("Tier 3: No lyrics found online, falling back to Whisper transcription...")
-    lines = transcribe_lyrics(mp3_path, model_size=whisper_model)
-    if lines:
-        logger.info(f"✓ Transcribed {len(lines)} lines with Whisper")
-        return lines
 
     logger.warning("No lyrics could be extracted from any source")
     return []

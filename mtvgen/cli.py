@@ -175,13 +175,6 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to an LRC file with pre-made synchronized lyrics",
     )
     parser.add_argument(
-        "--whisper-model",
-        type=str,
-        default="base",
-        choices=["tiny", "base", "small", "medium", "large-v3"],
-        help="Whisper model size for transcription fallback (default: base)",
-    )
-    parser.add_argument(
         "--resolution",
         type=str,
         default="1920x1080",
@@ -191,11 +184,6 @@ def main(argv: list[str] | None = None) -> int:
         "--lyrics-only",
         action="store_true",
         help="Only extract lyrics and save as JSON (skip video rendering)",
-    )
-    parser.add_argument(
-        "--force-whisper",
-        action="store_true",
-        help="Ignore LRC/embedded/online lyrics and transcribe with Whisper only (for testing)",
     )
     parser.add_argument(
         "--allow-no-lyrics",
@@ -247,8 +235,6 @@ def main(argv: list[str] | None = None) -> int:
     lyrics = extract_lyrics(
         mp3_path,
         lrc_path=args.lyrics,
-        whisper_model=args.whisper_model,
-        force_whisper=args.force_whisper,
     )
     logger.info(f"  Found {len(lyrics)} lyric lines")
 

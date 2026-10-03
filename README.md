@@ -9,7 +9,6 @@ MTVGen automatically extracts lyrics, synchronizes them to the audio, and render
 - **Smart Lyric Extraction** — Multi-tier fallback:
   1. Reads embedded lyrics from MP3 ID3 tags (SYLT/USLT)
   2. Searches online via LRCLIB and other providers
-  3. Falls back to AI transcription (Whisper) with word-level timestamps
 - **Audio-Reactive Visuals** — 64-band FFT spectrum analyzer that pulses with the music
 - **Karaoke-Style Lyrics** — Words highlight progressively as they're sung
 - **Cinematic Background** — Animated gradients with floating particles
@@ -64,11 +63,6 @@ python -m mtvgen song.mp3 -o my_video.mp4
 python -m mtvgen song.mp3 --lyrics-only
 ```
 
-### Use a larger Whisper model for better transcription
-```bash
-python -m mtvgen song.mp3 --whisper-model medium
-```
-
 ### Preview in Remotion Studio (interactive)
 ```bash
 cd remotion
@@ -82,7 +76,6 @@ npx remotion studio
 | `input` | (required) | Path to the input MP3 file |
 | `-o, --output` | `<input>_mtv.mp4` | Output MP4 file path |
 | `--lyrics` | None | Path to a pre-made `.lrc` file |
-| `--whisper-model` | `base` | Whisper model size: `tiny`, `base`, `small`, `medium`, `large-v3` |
 | `--resolution` | `1920x1080` | Output video resolution |
 | `--lyrics-only` | false | Only extract lyrics as JSON, skip video |
 | `-v, --verbose` | false | Enable debug logging |
@@ -93,7 +86,7 @@ npx remotion studio
 MP3 File
   │
   ├─→ [Python] Metadata extraction (mutagen)
-  ├─→ [Python] Lyric search (syncedlyrics → LRCLIB → Whisper)
+  ├─→ [Python] Lyric search (syncedlyrics → LRCLIB)
   │     │
   │     └─→ lyrics.json
   │
