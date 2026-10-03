@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 
 from . import __version__
-from .lyrics import extract_lyrics
+from .lyrics import DEFAULT_GEMINI_MODEL, extract_lyrics
 from .metadata import get_metadata
 from .models import SongData
 
@@ -175,11 +175,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to an LRC file with pre-made synchronized lyrics",
     )
     parser.add_argument(
-        "--whisper-model",
+        "--gemini-model",
         type=str,
-        default="base",
-        choices=["tiny", "base", "small", "medium", "large-v3"],
-        help="Whisper model size for transcription fallback (default: base)",
+        default=DEFAULT_GEMINI_MODEL,
+        help=f"Gemini model for the lyric transcription fallback (default: {DEFAULT_GEMINI_MODEL}; "
+             "needs the GEMINI_API_KEY environment variable)",
     )
     parser.add_argument(
         "--resolution",
@@ -193,9 +193,9 @@ def main(argv: list[str] | None = None) -> int:
         help="Only extract lyrics and save as JSON (skip video rendering)",
     )
     parser.add_argument(
-        "--force-whisper",
+        "--force-gemini",
         action="store_true",
-        help="Ignore LRC/embedded/online lyrics and transcribe with Whisper only (for testing)",
+        help="Ignore LRC/embedded/online lyrics and transcribe with Gemini only (for testing)",
     )
     parser.add_argument(
         "--allow-no-lyrics",
@@ -247,8 +247,8 @@ def main(argv: list[str] | None = None) -> int:
     lyrics = extract_lyrics(
         mp3_path,
         lrc_path=args.lyrics,
-        whisper_model=args.whisper_model,
-        force_whisper=args.force_whisper,
+        gemini_model=args.gemini_model,
+        force_gemini=args.force_gemini,
     )
     logger.info(f"  Found {len(lyrics)} lyric lines")
 
