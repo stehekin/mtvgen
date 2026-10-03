@@ -193,6 +193,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Only extract lyrics and save as JSON (skip video rendering)",
     )
     parser.add_argument(
+        "--allow-no-lyrics",
+        action="store_true",
+        help="Render the video even if no lyrics could be found",
+    )
+    parser.add_argument(
         "-v", "--verbose",
         action="store_true",
         help="Enable verbose logging",
@@ -240,6 +245,14 @@ def main(argv: list[str] | None = None) -> int:
         whisper_model=args.whisper_model,
     )
     logger.info(f"  Found {len(lyrics)} lyric lines")
+
+    if not lyrics and not args.allow_no_lyrics:
+        logger.error(
+            "No lyrics could be found from any source. Provide an LRC file with "
+            "--lyrics, retry later (online providers may be down), or pass "
+            "--allow-no-lyrics to render without lyrics."
+        )
+        return 2
 
     if lyrics:
         # Show first few lines as preview
