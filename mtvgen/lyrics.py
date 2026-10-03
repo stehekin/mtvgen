@@ -246,7 +246,7 @@ def fetch_lrclib_lyrics(title: str, artist: str, duration: Optional[float] = Non
 # Gemini Transcription (Fallback)
 # ---------------------------------------------------------------------------
 
-DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
+DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 
 _GEMINI_PROMPT = """You are transcribing the lyrics of a song from its audio.
 
@@ -342,7 +342,6 @@ def transcribe_lyrics(
                 response_mime_type="application/json",
                 response_schema=_GEMINI_SCHEMA,
                 temperature=0.0,
-                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
             ),
         )
         items = json.loads(response.text)
