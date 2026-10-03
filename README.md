@@ -69,7 +69,7 @@ python -m mtvgen song.mp3 --lyrics-only
 export GEMINI_API_KEY=your-key   # https://aistudio.google.com/apikey
 python -m mtvgen song.mp3                       # used automatically as the last fallback
 python -m mtvgen song.mp3 --force-gemini        # skip other sources, test Gemini only
-python -m mtvgen song.mp3 --gemini-model gemini-2.5-pro
+python -m mtvgen song.mp3 --gemini-model <model-name>   # any Gemini model that accepts audio
 ```
 
 ### Preview in Remotion Studio (interactive)
@@ -85,7 +85,7 @@ npx remotion studio
 | `input` | (required) | Path to the input MP3 file |
 | `-o, --output` | `<input>_mtv.mp4` | Output MP4 file path |
 | `--lyrics` | None | Path to a pre-made `.lrc` file |
-| `--gemini-model` | `gemini-2.5-flash` | Gemini model for the transcription fallback |
+| `--gemini-model` | `gemini-3.8-flash` | Gemini model for the transcription fallback |
 | `--force-gemini` | false | Skip other lyric sources and use Gemini only (testing) |
 | `--allow-no-lyrics` | false | Render even if no lyrics were found |
 | `--resolution` | `1920x1080` | Output video resolution |
