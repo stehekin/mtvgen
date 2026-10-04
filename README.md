@@ -10,9 +10,9 @@ MTVGen automatically extracts lyrics, synchronizes them to the audio, and render
   1. Reads embedded synced lyrics (SYLT) or provided `.lrc` files
   2. Searches top Chinese & global synced lyric services (**Kugou**, **NetEase**, **LRCLIB**, **Musixmatch**, **Genius**)
   3. **Demucs Vocal Separation** + **PyTorch MMS Forced Alignment** for plain text lyrics
-- **Audio-Reactive Visuals** — 64-band FFT spectrum analyzer that pulses with the music
-- **Karaoke-Style Lyrics** — Words highlight progressively as they're sung
-- **Cinematic Background** — Animated gradients with floating particles
+- **Selectable Themes & Visual Effects** — Choose between 6 distinct visual themes and mix-and-match overlay effects (`particles`, `spectrum`, `waveform`)
+- **Audio-Reactive Visuals** — Real-time FFT spectrum analyzer & oscilloscope waveform visualizers
+- **Karaoke-Style Lyrics** — Smooth, jitter-free lyric highlighting & frame-deterministic spring animations
 - **1080p Output** — High-quality MP4 video at 30fps
 
 ## Prerequisites
@@ -44,10 +44,20 @@ cd remotion && npm install && cd ..
 python -m mtvgen song.mp3
 ```
 
-This will:
-1. Extract the song's metadata (title, artist)
-2. Search for synchronized lyrics across Kugou, NetEase, LRCLIB, and global databases
-3. Render an MTV video → `song_mtv.mp4`
+### Choose Themes and Effects
+```bash
+# Sunset theme with waveform visualizer
+python -m mtvgen song.mp3 --theme sunset --effects waveform -o sunset_mtv.mp4
+
+# Northern Lights Aurora theme with floating particles
+python -m mtvgen song.mp3 --theme aurora --effects particles -o aurora_mtv.mp4
+
+# Midnight theme with both spectrum bars and particles
+python -m mtvgen song.mp3 --theme midnight --effects "particles,spectrum" -o midnight_mtv.mp4
+
+# Minimalist dark theme without overlay effects
+python -m mtvgen song.mp3 --theme minimal --effects none -o minimal_mtv.mp4
+```
 
 ### With a pre-made LRC file or plain text lyrics
 ```bash
@@ -56,11 +66,6 @@ python -m mtvgen song.mp3 --lyrics song.lrc
 
 # Plain text file (automatically aligned with MMS Forced Alignment)
 python -m mtvgen song.mp3 --lyrics lyrics.txt --separate-vocals
-```
-
-### Specify output path
-```bash
-python -m mtvgen song.mp3 -o my_video.mp4
 ```
 
 ### Extract lyrics only (no video)
@@ -80,34 +85,14 @@ npx remotion studio
 |--------|---------|-------------|
 | `input` | (required) | Path to the input MP3 file |
 | `-o, --output` | `<input>_mtv.mp4` | Output MP4 file path |
+| `--theme` | `neon` | Visual theme: `neon`, `minimal`, `cosmic`, `sunset`, `aurora`, `midnight` |
+| `--effects` | `all` | Overlay effects: `all`, `none`, or comma-separated e.g. `'particles,spectrum,waveform'` |
 | `--lyrics` | None | Path to a pre-made `.lrc` file or plain text file |
 | `--separate-vocals` | false | Isolate vocal track using Demucs before forced alignment |
 | `--resolution` | `1920x1080` | Output video resolution |
 | `--lyrics-only` | false | Only extract lyrics as JSON, skip video |
 | `--allow-no-lyrics` | false | Render even if no lyrics were found |
 | `-v, --verbose` | false | Enable debug logging |
-
-## Architecture
-
-```
-MP3 File
-  │
-  ├─→ [Python] Metadata extraction (mutagen)
-  ├─→ [Python] Lyric retrieval:
-  │     ├─ Tier 1: Embedded SYLT ID3 tags / LRC file
-  │     ├─ Tier 2: Chinese & Global APIs (Kugou → NetEase → LRCLIB / Musixmatch)
-  │     └─ Tier 3: Demucs Vocal Separation + PyTorch MMS Forced Alignment
-  │           │
-  │           └─→ lyrics.json
-  │
-  └─→ [Remotion] Video rendering
-        ├─ Animated gradient background
-        ├─ Floating particles
-        ├─ 64-band FFT spectrum visualizer
-        └─ Synchronized lyric display (karaoke mode)
-              │
-              └─→ output.mp4
-```
 
 ## License
 

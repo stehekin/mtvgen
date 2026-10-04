@@ -3,17 +3,20 @@ import { MTV } from './MTV';
 import { SongData } from './utils/lyrics';
 import './styles.css';
 
+export type MTVTheme = 'neon' | 'minimal' | 'cosmic' | 'sunset' | 'aurora' | 'midnight';
+export type MTVEffect = 'particles' | 'spectrum' | 'waveform' | 'all' | 'none';
+
 export type MTVProps = {
   songData: SongData;
   audioFile: string;
-  theme?: 'neon' | 'vaporwave' | 'minimal' | 'cosmic';
+  theme?: MTVTheme;
+  effects?: string; // Comma-separated or single effect string
 };
 
 const FPS = 30;
 
-// Calculate metadata from input props (allows dynamic duration)
 const calculateMetadata = ({ props }: { props: MTVProps }) => {
-  const durationInFrames = Math.ceil(props.songData.duration * FPS) + FPS; // +1s padding
+  const durationInFrames = Math.ceil(props.songData.duration * FPS) + FPS;
   return {
     durationInFrames,
     fps: FPS,
@@ -23,7 +26,6 @@ const calculateMetadata = ({ props }: { props: MTVProps }) => {
   };
 };
 
-// Default props for Remotion Studio preview
 const defaultProps: MTVProps = {
   songData: {
     title: 'Sample Song',
@@ -42,31 +44,11 @@ const defaultProps: MTVProps = {
           { word: 'line', start: 4.2, end: 5.0 },
         ],
       },
-      {
-        text: 'Another line goes here',
-        start: 6.0,
-        end: 9.0,
-        words: [
-          { word: 'Another', start: 6.0, end: 6.8 },
-          { word: 'line', start: 6.8, end: 7.5 },
-          { word: 'goes', start: 7.5, end: 8.2 },
-          { word: 'here', start: 8.2, end: 9.0 },
-        ],
-      },
-      {
-        text: 'The music plays on',
-        start: 12.0,
-        end: 15.0,
-        words: [
-          { word: 'The', start: 12.0, end: 12.5 },
-          { word: 'music', start: 12.5, end: 13.2 },
-          { word: 'plays', start: 13.2, end: 14.0 },
-          { word: 'on', start: 14.0, end: 15.0 },
-        ],
-      },
     ],
   },
   audioFile: 'audio.mp3',
+  theme: 'neon',
+  effects: 'all',
 };
 
 export const RemotionRoot: React.FC = () => {

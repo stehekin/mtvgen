@@ -89,6 +89,7 @@ def render_video(
     output_path: Path,
     resolution: str = "1920x1080",
     theme: str = "neon",
+    effects: str = "all",
 ) -> None:
     """Invoke Remotion to render the MTV video.
 
@@ -97,7 +98,8 @@ def render_video(
         mp3_path: Path to the input MP3 file
         output_path: Desired output MP4 path
         resolution: Video resolution (e.g. '1920x1080')
-        theme: Video visual theme ('neon', 'vaporwave', 'minimal', 'cosmic')
+        theme: Video visual theme ('neon', 'minimal', 'cosmic', 'sunset', 'aurora', 'midnight')
+        effects: Visual effects overlay ('all', 'none', or comma-separated e.g. 'particles,spectrum,waveform')
     """
     ensure_remotion_deps()
 
@@ -118,6 +120,7 @@ def render_video(
         "audioFile": "audio.mp3",
         "songData": song_data.to_dict(),
         "theme": theme,
+        "effects": effects,
     }
     props_json = json.dumps(input_props)
 
@@ -187,8 +190,14 @@ def main(argv: list[str] | None = None) -> int:
         "--theme",
         type=str,
         default="neon",
-        choices=["neon", "vaporwave", "minimal", "cosmic"],
-        help="Video visual theme: neon (default), vaporwave, minimal, cosmic",
+        choices=["neon", "minimal", "cosmic", "sunset", "aurora", "midnight"],
+        help="Video visual theme: neon (default), minimal, cosmic, sunset, aurora, midnight",
+    )
+    parser.add_argument(
+        "--effects",
+        type=str,
+        default="all",
+        help="Visual overlay effects: all (default), none, or comma-separated e.g. 'particles,spectrum,waveform'",
     )
     parser.add_argument(
         "--lyrics-only",
@@ -295,7 +304,14 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("=" * 50)
     logger.info("Step 4: Rendering MTV video...")
     try:
-        render_video(song_data, mp3_path, output_path, resolution=args.resolution, theme=args.theme)
+        render_video(
+            song_data,
+            mp3_path,
+            output_path,
+            resolution=args.resolution,
+            theme=args.theme,
+            effects=args.effects,
+        )
     except Exception as e:
         logger.error(f"Video rendering failed: {e}")
         return 1
